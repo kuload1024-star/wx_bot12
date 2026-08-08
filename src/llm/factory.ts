@@ -11,22 +11,21 @@ export function createLLMAdapter(config: LLMConfig): LLMAdapter {
       return new MockAdapter(config.options as { mockEcho?: boolean });
 
     case 'openai':
-      // Lazy load: only require openai when actually used
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { OpenAIAdapter } = require('../adapters/openai');
-        return new OpenAIAdapter(config.options);
-      } catch {
+        const { OpenAIAdapter } = require('./adapters/openai');
+        return new OpenAIAdapter(config.options as any);
+      } catch (err) {
+        console.error('[DEBUG] 加载 openai 适配器失败:', err);
         throw new Error(
-          'OpenAI 适配器尚未实现或 "openai" 包未安装。' +
-          '请运行: npm install openai'
+          'OpenAI 适配器加载失败: ' + (err instanceof Error ? err.message : String(err))
         );
       }
 
     case 'qwen':
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { QwenAdapter } = require('../adapters/qwen');
+        const { QwenAdapter } = require('./adapters/qwen');
         return new QwenAdapter(config.options);
       } catch {
         throw new Error(
@@ -34,6 +33,12 @@ export function createLLMAdapter(config: LLMConfig): LLMAdapter {
           '如需使用，请实现 src/llm/adapters/qwen.ts'
         );
       }
+
+    case 'claude':
+       const { ClaudeAdapter } = require('./adapters/claude');
+       return new ClaudeAdapter(config.options);
+
+
 
     default:
       throw new Error(`未知的 LLM 提供商: ${config.provider}。支持的选项: mock, openai, qwen`);
