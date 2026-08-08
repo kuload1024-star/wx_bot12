@@ -17,6 +17,19 @@ export interface OpenAIOptions {
 const VALID_OPTION_KEYS = ['model', 'baseURL', 'apiKey', 'temperature', 'maxTokens', 'headers', 'apiType'];
 const ALLOWED_CHAT_FIELDS = ['model', 'messages', 'input', 'temperature', 'max_tokens', 'max_output_tokens', 'stream', 'reasoning_effort'];
 
+const IMAGE_KEYWORDS = [
+  '画图', '画一张', '画个', '绘制', '绘', '生成图', '生成图片', '生成图像',
+  '做图', '做一张图', '设计图', '设计图片', '制作图片', '制作图',
+  '图片', '图像', '照片', '相片', '截图',
+  '生成', '创建图片', '创建图像',
+  'draw', 'painting', 'picture', 'photo', 'image', 'generate',
+  '帮我画', '给我画', '画出来', '画出来',
+  '头像', 'logo', '海报', '插画', '漫画', '动图', '表情包',
+  '图片生成', '图像生成', '文生图', '文字生图',
+];
+
+const IMAGE_MODEL = 'gpt-image-2';
+
 export class OpenAIAdapter implements LLMAdapter {
   readonly name = 'openai';
   private baseURL: string;
@@ -51,10 +64,19 @@ export class OpenAIAdapter implements LLMAdapter {
   }
 
   async chat(messages: Message[], options?: ChatOptions): Promise<LLMResponse> {
-    const payload = this.sanitizePayload(this.buildPayload(messages, options));
+    let effectiveModel = this.model;
+    let isImageRequest = false;
+    const userMessage = messages[messages.length - 1];
+    if (userMessage?.role === 'user' && this.detectImageRequest(userMessage.content)) {
+      effectiveModel = IMAGE_MODEL;
+      isImageRequest = true;
+      logger.info(`[OpenAIAdapter] 检测到图片生成请求，切换模型: ${this.model} → ${effectiveModel}`);
+    }
+
+    const payload = this.sanitizePayload(this.buildPayloadWithModel(messages, options, effectiveModel));
     const url = this.buildUrl();
 
-    logger.debug(`[OpenAIAdapter] 调用 chat (${this.apiType}), 消息数: ${messages.length}`);
+    logger.debug(`[OpenAIAdapter] 调用 chat (${this.apiType}), 模型=${effectiveModel}, 消息数: ${messages.length}`);
 
     try {
       const response = await axios.post(url, payload, {
@@ -73,7 +95,7 @@ export class OpenAIAdapter implements LLMAdapter {
 
       return {
         content,
-        model: data.model || this.model,
+        model: data.model || effectiveModel,
         usage: this.extractUsage(data),
       };
     } catch (err: any) {
@@ -81,6 +103,33 @@ export class OpenAIAdapter implements LLMAdapter {
         const status = err.response.status;
         const body = JSON.stringify(err.response.data).slice(0, 500);
         logger.error(`[OpenAIAdapter] API 错误 ${status}: ${body}`);
+
+        if (isImageRequest && (status === 403 || status === 404 || status === 502 || status === 503)) {
+          logger.warn(`[OpenAIAdapter] 图片模型 ${IMAGE_MODEL} 不可用，回退到 ${this.model}`);
+          try {
+            const fallbackPayload = this.sanitizePayload(this.buildPayloadWithModel(messages, options, this.model));
+            const fallbackRes = await axios.post(url, fallbackPayload, {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.apiKey}`,
+                ...this.headers,
+              },
+              timeout: 120000,
+            });
+            const fallbackContent = this.extractContent(fallbackRes.data);
+            return {
+              content: fallbackContent,
+              model: fallbackRes.data.model || this.model,
+              usage: this.extractUsage(fallbackRes.data),
+            };
+          } catch (fallbackErr: any) {
+            logger.error(`[OpenAIAdapter] 回退也失败: ${fallbackErr.message}`);
+            return {
+              content: '抱歉，服务暂时不可用，请稍后再试。',
+              model: this.model,
+            };
+          }
+        }
       }
       throw err;
     }
@@ -130,6 +179,10 @@ export class OpenAIAdapter implements LLMAdapter {
   }
 
   private buildPayload(messages: Message[], options?: ChatOptions): Record<string, any> {
+    return this.buildPayloadWithModel(messages, options, this.model);
+  }
+
+  private buildPayloadWithModel(messages: Message[], options: ChatOptions | undefined, model: string): Record<string, any> {
     if (this.apiType === 'responses') {
       const input: Array<{ role: string; content: string }> = [];
       if (options?.systemPrompt) {
@@ -139,7 +192,7 @@ export class OpenAIAdapter implements LLMAdapter {
         input.push({ role: msg.role, content: msg.content });
       }
       return {
-        model: this.model,
+        model,
         input,
         temperature: options?.temperature,
         max_output_tokens: options?.maxTokens,
@@ -154,11 +207,21 @@ export class OpenAIAdapter implements LLMAdapter {
       chatMessages.push({ role: msg.role, content: msg.content });
     }
     return {
-      model: this.model,
+      model,
       messages: chatMessages,
       temperature: options?.temperature,
       max_tokens: options?.maxTokens,
     };
+  }
+
+  private detectImageRequest(text: string): boolean {
+    const lowerText = text.toLowerCase();
+    for (const keyword of IMAGE_KEYWORDS) {
+      if (lowerText.includes(keyword.toLowerCase())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private sanitizePayload(payload: Record<string, any>): Record<string, any> {
