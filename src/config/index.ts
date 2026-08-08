@@ -48,9 +48,41 @@ function resolveProvider(): { provider: string; config: ProviderPreset | null } 
   return { provider: envProvider || 'default', config: null };
 }
 
+function parseEnvList(envKey: string): string[] | undefined {
+  const val = process.env[envKey];
+  if (val === undefined) return undefined;
+  const trimmed = val.trim();
+  if (!trimmed) return [];
+
+  let list: string[] = [];
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        list = parsed.map((s: any) => String(s).trim()).filter(Boolean);
+      }
+    } catch {
+      list = trimmed.split(',').map(s => s.trim().replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+    }
+  } else {
+    list = trimmed.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return list;
+}
+
 function resolveEnvVars(config: AppConfig): AppConfig {
   const llm = { ...config.llm };
   const options = { ...llm.options };
+  const bot = { ...config.bot };
+
+  const allowedPrivateUsers = parseEnvList('ALLOWED_PRIVATE_USERS');
+  const allowedGroupNames = parseEnvList('ALLOWED_GROUP_NAMES');
+  if (allowedPrivateUsers) bot.allowedPrivateUsers = allowedPrivateUsers;
+  if (allowedGroupNames) bot.allowedGroupNames = allowedGroupNames;
+
+  if (process.env.BOT_NAME) {
+    bot.name = process.env.BOT_NAME;
+  }
 
   const { provider: envProvider, config: preset } = resolveProvider();
 
@@ -78,7 +110,7 @@ function resolveEnvVars(config: AppConfig): AppConfig {
     }
   }
 
-  return { ...config, llm };
+  return { ...config, llm, bot };
 }
 
 let runtimeConfig: AppConfig;

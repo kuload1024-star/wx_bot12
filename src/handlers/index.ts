@@ -36,6 +36,10 @@ export async function routeMessage(
   botName: string,
   downloader: DownloaderClient,
   noteImageThreshold: number,
+  requireMentionGroup: boolean = true,
+  requireMentionPrivate: boolean = false,
+  allowedPrivateUsers?: string[],
+  allowedGroupNames?: string[],
 ): Promise<void> {
   // Ignore self messages to prevent loops
   if (msg.self()) {
@@ -46,16 +50,31 @@ export async function routeMessage(
   const room = msg.room();
   const msgType = msg.type();
   let text = msg.text();
+  const contactName = await contact.name();
 
   // ── Group (room) messages ──────────────────────────────────────────
   if (room) {
+    const roomName = await room.topic();
+    logger.info(`[路由] 群消息: 当前群="${roomName}", 白名单=${JSON.stringify(allowedGroupNames)}`);
+
+    // --- 群名白名单检查 ---
+    if (allowedGroupNames !== undefined) {
+      if (allowedGroupNames.length === 0) {
+        logger.info(`[路由] 群聊白名单为空，跳过所有群消息`);
+        return;
+      }
+      if (!allowedGroupNames.includes(roomName)) {
+        logger.info(`[路由] 群不在白名单，跳过: ${roomName}`);
+        return;
+      }
+    }
+
     // --- Video shares: always process, even without @mention ---
     if (msgType === types.Message.Text) {
       const detected = detectVideoShare(text);
       if (detected.isVideoShare) {
-        // Clean @mention if present so the parsing API receives clean text
         const cleanText = cleanMentionText(text, botName);
-        logger.info(`[路由] 群="${room.topic()}" | 用户=${contact.name()} | 视频分享: 平台=${detected.platform}`);
+        logger.info(`[路由] 群="${roomName}" | 用户=${contactName} | 视频分享: 平台=${detected.platform}`);
         try {
           await handleVideoShare(msg, contact, cleanText, downloader, noteImageThreshold);
         } catch (error) {
@@ -66,15 +85,37 @@ export async function routeMessage(
       }
     }
 
-    // --- Regular text: require @mention ---
-    if (!isBotMentioned(text, botName)) {
-      return;
+    // --- Regular text: require @mention if configured ---
+    if (requireMentionGroup) {
+      const mentioned = isBotMentioned(text, botName);
+      logger.info(`[路由] 群="${roomName}" | @机器人检查: mentioned=${mentioned}, text="${text.slice(0, 100)}"`);
+      if (!mentioned) {
+        logger.info(`[路由] 群聊未 @机器人，跳过`);
+        return;
+      }
     }
     text = cleanMentionText(text, botName);
-    logger.info(`[路由] 群="${room.topic()}" | 用户=${contact.name()}: "${text.slice(0, 200)}${text.length > 200 ? '...' : ''}"`);
+    logger.info(`[路由] 群="${roomName}" | 用户=${contactName}: "${text.slice(0, 200)}${text.length > 200 ? '...' : ''}"`);
   } else {
     // ── Private (1-on-1) messages ────────────────────────────────────
-    logger.info(`来自 ${contact.name()} 的消息 (${contact.id}): 类型=${types.Message[msgType]}`);
+    if (allowedPrivateUsers !== undefined) {
+      if (allowedPrivateUsers.length === 0) {
+        logger.info(`[路由] 私聊白名单为空，跳过所有私聊消息`);
+        return;
+      }
+      if (!allowedPrivateUsers.includes(contactName)) {
+        logger.info(`[路由] 私聊用户不在白名单，跳过: ${contactName}`);
+        return;
+      }
+    }
+    if (requireMentionPrivate && !isBotMentioned(text, botName)) {
+      logger.info(`[路由] 私聊消息未 @机器人，跳过: ${contactName}`);
+      return;
+    }
+    if (isBotMentioned(text, botName)) {
+      text = cleanMentionText(text, botName);
+    }
+    logger.info(`来自 ${contactName} 的消息 (${contact.id}): 类型=${types.Message[msgType]}`);
   }
 
   switch (msgType) {

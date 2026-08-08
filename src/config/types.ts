@@ -19,8 +19,12 @@ export type ProvidersConfig = Record<string, ProviderPreset>;
 export interface BotSettings {
   name: string;
   maxContextMessages: number;
-  /** 图文笔记图片超过此数量时，拼接为一张长图发送（默认 3） */
   noteImageThreshold: number;
+  requireMention?: boolean;
+  requireMentionInGroup?: boolean;
+  requireMentionInPrivate?: boolean;
+  allowedPrivateUsers?: string[];
+  allowedGroupNames?: string[];
 }
 
 export interface DownloaderConfig {

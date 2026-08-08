@@ -237,7 +237,20 @@ export class WeChatBot {
 
   private async onMessage(msg: any): Promise<void> {
     try {
-      await routeMessage(msg, this.llmAdapter, this.contextManager, this.config.bot.name, this.downloader, this.config.bot.noteImageThreshold);
+      const requireMentionGroup = this.config.bot.requireMentionInGroup ?? this.config.bot.requireMention ?? true;
+      const requireMentionPrivate = this.config.bot.requireMentionInPrivate ?? false;
+      await routeMessage(
+        msg,
+        this.llmAdapter,
+        this.contextManager,
+        this.config.bot.name,
+        this.downloader,
+        this.config.bot.noteImageThreshold,
+        requireMentionGroup,
+        requireMentionPrivate,
+        this.config.bot.allowedPrivateUsers,
+        this.config.bot.allowedGroupNames
+      );
     } catch (error) {
       logger.error('未处理的消息错误:', error);
     }

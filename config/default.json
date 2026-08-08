@@ -13,7 +13,9 @@
   "bot": {
     "name": "WxBot",
     "maxContextMessages": 10,
-    "noteImageThreshold": 3
+    "noteImageThreshold": 3,
+    "requireMentionInGroup": true,
+    "requireMentionInPrivate": false
   },
   "downloader": {
     "apiUrl": "https://www.yyyc1000.site"
