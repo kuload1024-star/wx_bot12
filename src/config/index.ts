@@ -1,4 +1,12 @@
-import { AppConfig } from './types';
+/*
+ * @Author: linxf 2361906818@qq.com
+ * @Date: 2026-08-09 00:58:35
+ * @LastEditors: linxf 2361906818@qq.com
+ * @LastEditTime: 2026-08-09 03:43:11
+ * @FilePath: \AI\wx_bot12\src\config\index.ts
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
+import { AppConfig, ProvidersConfig, ProviderPreset } from './types';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -17,36 +25,71 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return result;
 }
 
-function resolveEnvVars(config: AppConfig): AppConfig {
-  const envMap: Record<string, string> = {
-    openai: process.env.OPENAI_API_KEY || '',
-    qwen: process.env.QWEN_API_KEY || '',
-  };
+function loadProvidersConfig(): ProvidersConfig {
+  const providersPath = path.resolve(__dirname, '../../config/providers.json');
+  if (!fs.existsSync(providersPath)) {
+    return {};
+  }
+  return JSON.parse(fs.readFileSync(providersPath, 'utf-8')) as ProvidersConfig;
+}
 
+function resolveProvider(): { provider: string; config: ProviderPreset | null } {
+  const providers = loadProvidersConfig();
+  const envProvider = process.env.LLM_PROVIDER;
+
+  if (envProvider && providers[envProvider]) {
+    return { provider: envProvider, config: providers[envProvider] };
+  }
+
+  if (envProvider && !providers[envProvider]) {
+    console.warn(`[CONFIG] 警告: LLM_PROVIDER=${envProvider} 在 providers.json 中不存在`);
+  }
+
+  return { provider: envProvider || 'default', config: null };
+}
+
+function resolveEnvVars(config: AppConfig): AppConfig {
   const llm = { ...config.llm };
   const options = { ...llm.options };
 
-  const apiKey = envMap[llm.provider];
-  if (apiKey) {
-    options.apiKey = apiKey;
+  const { provider: envProvider, config: preset } = resolveProvider();
+
+  if (preset) {
+    llm.provider = preset.provider;
+    llm.options = { ...preset.options };
+
+    if (preset.apiKeyEnv) {
+      const apiKey = process.env[preset.apiKeyEnv];
+      if (apiKey) {
+        llm.options.apiKey = apiKey;
+      }
+    }
+  } else if (llm.provider === 'openai') {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      options.apiKey = apiKey;
+      llm.options = options;
+    }
+  } else if (llm.provider === 'qwen') {
+    const apiKey = process.env.QWEN_API_KEY;
+    if (apiKey) {
+      options.apiKey = apiKey;
+      llm.options = options;
+    }
   }
 
-  llm.options = options;
   return { ...config, llm };
 }
 
-// 运行时配置引用（用于 Web 面板读取和修改）
 let runtimeConfig: AppConfig;
 
 export function loadConfig(): AppConfig {
-  // 1. 加载默认配置
   const defaultPath = path.resolve(__dirname, '../../config/default.json');
   if (!fs.existsSync(defaultPath)) {
     throw new Error(`默认配置文件不存在: ${defaultPath}`);
   }
   let config = JSON.parse(fs.readFileSync(defaultPath, 'utf-8')) as AppConfig;
 
-  // 2. 合并生产配置（如果存在）
   const prodPath = path.resolve(__dirname, '../../config/production.json');
   if (fs.existsSync(prodPath)) {
     const prodConfig = JSON.parse(fs.readFileSync(prodPath, 'utf-8'));
@@ -56,36 +99,31 @@ export function loadConfig(): AppConfig {
     ) as unknown as AppConfig;
   }
 
-  // 3. 解析环境变量中的 API 密钥
   config = resolveEnvVars(config);
 
-  // 4. 如果设置了环境变量，覆盖下载器 API URL
   if (process.env.DOWNLOADER_API_URL) {
     config.downloader = { ...config.downloader, apiUrl: process.env.DOWNLOADER_API_URL };
+  }
+
+  const { provider: envProvider } = resolveProvider();
+  if (envProvider && envProvider !== 'default') {
+    console.log(`[CONFIG] 使用 LLM 提供商: ${envProvider} (来自 .env 的 LLM_PROVIDER)`);
   }
 
   runtimeConfig = config;
   return config;
 }
 
-/**
- * 获取当前运行时配置（Web 面板用，不含敏感密钥）
- */
 export function getRuntimeConfig(): AppConfig {
   return runtimeConfig;
 }
 
-/**
- * 更新运行时配置并持久化到 config/production.json
- * @param update 要更新的配置字段（部分配置）
- */
 export function updateRuntimeConfig(update: Partial<AppConfig>): AppConfig {
   runtimeConfig = deepMerge(
     runtimeConfig as unknown as Record<string, unknown>,
     update as unknown as Record<string, unknown>
   ) as unknown as AppConfig;
 
-  // 持久化到 production.json（不包含环境变量中的密钥）
   const prodPath = path.resolve(__dirname, '../../config/production.json');
   const toSave = {
     ...runtimeConfig,
@@ -94,7 +132,6 @@ export function updateRuntimeConfig(update: Partial<AppConfig>): AppConfig {
       options: { ...runtimeConfig.llm.options },
     },
   };
-  // 移除运行时注入的 API 密钥，避免写入文件
   if (toSave.llm.options.apiKey) {
     delete toSave.llm.options.apiKey;
   }

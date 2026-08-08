@@ -1,12 +1,1 @@
-{
-  "llm": {
-    "provider": "openai",
-    "options": {
-      "model": "gpt-5.5",
-      "baseURL": "https://www.mxou.ai",
-      "headers": {
-        "x-openai-actor-authorization": "local-image-extension"
-      }
-    }
-  }
-}
+{}

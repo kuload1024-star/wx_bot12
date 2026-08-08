@@ -1,0 +1,50 @@
+{
+  "mxou": {
+    "provider": "openai",
+    "options": {
+      "model": "gpt-5.5",
+      "baseURL": "https://www.mxou.ai",
+      "apiType": "responses",
+      "headers": {
+        "x-openai-actor-authorization": "local-image-extension"
+      }
+    },
+    "apiKeyEnv": "MXOU_API_KEY"
+  },
+  "siliconflow": {
+    "provider": "openai",
+    "options": {
+      "model": "Pro/zai-org/GLM-5.1",
+      "baseURL": "https://api.siliconflow.cn/v1",
+      "apiType": "chat_completions"
+    },
+    "apiKeyEnv": "SILICONFLOW_API_KEY"
+  },
+  "aliyun": {
+    "provider": "openai",
+    "options": {
+      "model": "qwen-turbo",
+      "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "apiType": "chat_completions"
+    },
+    "apiKeyEnv": "ALIYUN_API_KEY"
+  },
+  "ollama": {
+    "provider": "openai",
+    "options": {
+      "model": "qwen2.5",
+      "baseURL": "http://localhost:11434",
+      "apiType": "chat_completions"
+    },
+    "apiKeyEnv": null
+  },
+  "groq": {
+    "provider": "openai",
+    "options": {
+      "model": "llama3-8b-8192",
+      "baseURL": "https://api.groq.com/openai/v1",
+      "apiType": "chat_completions"
+    },
+    "apiKeyEnv": "GROQ_API_KEY"
+  }
+}

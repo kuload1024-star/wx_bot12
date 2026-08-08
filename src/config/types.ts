@@ -8,6 +8,14 @@ export interface LLMConfig {
   options: Record<string, unknown>;
 }
 
+export interface ProviderPreset {
+  provider: string;
+  options: Record<string, unknown>;
+  apiKeyEnv?: string | null;
+}
+
+export type ProvidersConfig = Record<string, ProviderPreset>;
+
 export interface BotSettings {
   name: string;
   maxContextMessages: number;
