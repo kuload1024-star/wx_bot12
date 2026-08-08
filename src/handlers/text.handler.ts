@@ -2,6 +2,10 @@ import type { Message as WechatyMessage, Contact } from 'wechaty';
 import { LLMAdapter, Message } from '../llm/interface';
 import { ContextManager } from '../llm/context';
 import { logger } from '../utils/logger';
+import { handleFeatureCommand } from '../features';
+import { loadFeaturesConfig } from '../features/config';
+
+const featuresConfig = loadFeaturesConfig();
 
 export async function handleText(
   msg: WechatyMessage,
@@ -9,12 +13,25 @@ export async function handleText(
   llmAdapter: LLMAdapter,
   contextManager: ContextManager,
   contextId?: string,
-  overriddenText?: string
+  overriddenText?: string,
+  isAllowedUser: boolean = true
 ): Promise<void> {
   const userText = overriddenText ?? msg.text();
   const effectiveId = contextId ?? contact.id;
 
   try {
+    // Check for feature commands first (only for whitelisted users)
+    if (isAllowedUser) {
+      const featureResult = await handleFeatureCommand(userText, contact.id, true, featuresConfig);
+      if (featureResult.handled) {
+        if (featureResult.reply) {
+          await msg.say(featureResult.reply);
+          logger.info(`[功能] ${contact.name()} 使用了功能命令: "${userText.slice(0, 50)}"`);
+        }
+        return;
+      }
+    }
+
     // Build user message
     const userMsg: Message = { role: 'user', content: userText };
     contextManager.addMessage(effectiveId, userMsg);

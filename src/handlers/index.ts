@@ -51,6 +51,7 @@ export async function routeMessage(
   const msgType = msg.type();
   let text = msg.text();
   const contactName = await contact.name();
+  let isAllowedUser = false;
 
   // ── Group (room) messages ──────────────────────────────────────────
   if (room) {
@@ -96,6 +97,9 @@ export async function routeMessage(
     }
     text = cleanMentionText(text, botName);
     logger.info(`[路由] 群="${roomName}" | 用户=${contactName}: "${text.slice(0, 200)}${text.length > 200 ? '...' : ''}"`);
+
+    // 群聊：群在白名单内，但用户需要检查是否在私聊白名单
+    isAllowedUser = allowedPrivateUsers === undefined || allowedPrivateUsers.length === 0 || allowedPrivateUsers.includes(contactName);
   } else {
     // ── Private (1-on-1) messages ────────────────────────────────────
     if (allowedPrivateUsers !== undefined) {
@@ -116,6 +120,9 @@ export async function routeMessage(
       text = cleanMentionText(text, botName);
     }
     logger.info(`来自 ${contactName} 的消息 (${contact.id}): 类型=${types.Message[msgType]}`);
+
+    // 私聊：用户在白名单内
+    isAllowedUser = true;
   }
 
   switch (msgType) {
@@ -140,7 +147,7 @@ export async function routeMessage(
 
       // For group messages, use room.id as conversation context key;
       // pass cleaned text to avoid @mention prefix going to LLM.
-      await handleText(msg, contact, llmAdapter, contextManager, room?.id, text);
+      await handleText(msg, contact, llmAdapter, contextManager, room?.id, text, isAllowedUser);
       break;
     }
     default:
